@@ -225,7 +225,12 @@ def getNumArea(pth):
 def load_cnn():
     model_path = './myCNN.h5'
     K.clear_session()  # Clear previous models from memory.
-    cnn_model = load_model(model_path)
+    # cnn_model = load_model(model_path)
+    try:
+        cnn_model = load_model(model_path)
+    except:
+        print('err', '程序目录下找不到cnn模型')
+        sys.exit(0)
     return cnn_model
 
 def convert2Num(onehot):
@@ -318,6 +323,9 @@ def processMain(pth,outPath = './result.txt'):
     # dot_img = cv2.GaussianBlur(cv2.resize(dot_img,(10,10)),(3,3),1)
     #
     # imwrite('./dot1.jpg',dot_img)
+    if dot_img is None:
+        print('err','缺失小数点模板')
+        sys.exit(0)
     d_w, d_h = dot_img.shape[::-1]
     dots = []
     for i in range(3):

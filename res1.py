@@ -605,9 +605,11 @@ def process1(path,outPath = './result.txt'):
     # adapt = adapt_otsu(train_o, index)
     print('2.加载小数点模板')
     dot_src = cv2.imread('./dot.jpg', 0)
+
     if dot_src is None:
         print('err','缺失小数点模板')
         sys.exit(0)
+
     _, dot_src = cv2.threshold(dot_src, 127, 255,cv2.THRESH_BINARY)
     _, dot_c, hierarchy = cv2.findContours(dot_src,cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     dot_img = dot_c[0]
