@@ -1,3 +1,5 @@
+
+# coding=utf-8
 '''
 本版本使用简单的腐蚀膨胀，直接获取最大区域为数字区域。
 
@@ -158,6 +160,7 @@ def split_light(src,index=0):
     img_hsv = cv2.cvtColor(src, cv2.COLOR_BGR2HSV)
 
     H, S, V = cv2.split(img_hsv)
+    l_d = np.mean(V)
     print('亮度均值：',np.mean(V))
     avg_light = np.mean(V)
     low=254
@@ -172,7 +175,7 @@ def split_light(src,index=0):
     mask4_l = cv2.inRange(V, low, 255)
     # imwrite('./res1/5_light'+str(index)+'.jpg', mask4_l)
     imwrite(dir_path+'/1_light'+str(index)+'.jpg', mask4_l)
-    return mask4_l
+    return mask4_l,l_d
 
 
 
@@ -207,7 +210,7 @@ def getNumArea(pth):
     # imwrite(dir_path+'/0_opened2.jpg', opened)
     threshold, imgOtsu = cv2.threshold(imgGray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     imwrite(dir_path+'/1_imgOtsu.jpg', imgOtsu)
-    light_mask = split_light(img1)
+    light_mask,light = split_light(img1)
 
     img_tmp = cv2.bitwise_and(imgOtsu,light_mask)
     img_tmp = cv2.erode(img_tmp, kernel3, iterations=1)
@@ -219,7 +222,7 @@ def getNumArea(pth):
     cut_img_arr=get_contours_area(img_mask,img_tmp)
     for i in range(len(cut_img_arr)):
         imwrite(dir_path+'/1_cut_img'+str(i)+'.jpg', cut_img_arr[i])
-    return cut_img_arr
+    return cut_img_arr,light
 
 
 def load_cnn():
@@ -287,21 +290,41 @@ def correctAngle(src,index):
     imwrite(dir_path+'/4_correct'+str(index)+'.jpg', correct)
     return correct
 
-def makedilateMask(src,index):
+def makedilateMask(src,l_d,index):
     wid = src.shape[1]
     kel = kernel30
-    if wid < 620 and wid > 200:
-        kel= kernel30
-    elif wid > 620 and wid < 1000:
-        kel= kernel40
-    elif wid > 1000 and wid<1400:
-        kel= kernel2
-    elif wid > 1400:
-        kel = kernel85
-    elif wid < 200:
-        kel= kernel5
-    if p2!=-1:
+    if p2==-1:
+        if wid < 620 and wid > 200 and l_d>60:
+            kel= kernel30
+            print('当前第二个参数数值为29')
+        elif wid > 620 and wid < 1000 and l_d>60:
+            kel= kernel40
+            print('当前第二个参数数值为40')
+        elif wid > 1000 and wid<1400 and l_d>60:
+            kel= kernel2
+            print('当前第二个参数数值为65')
+        elif wid > 1400 and l_d>60:
+            kel = kernel85
+            print('当前第二个参数数值为82')
+        elif wid < 200:
+            kel= kernel5
+            print('当前第二个参数数值为5')
+        if l_d<60:
+            if wid > 1400:
+                kel = cv2.getStructuringElement(cv2.MORPH_RECT, (48, 48))
+                print('当前第二个参数值为48')
+            elif wid > 1000 and wid<1400:
+                kel = cv2.getStructuringElement(cv2.MORPH_RECT, (40, 40))
+                print('当前第二个参数值为40')
+            elif  wid > 620 and wid < 1000:
+                kel = cv2.getStructuringElement(cv2.MORPH_RECT, (33, 33))
+                print('当前第二个参数值为33')
+            elif wid < 620 and wid > 200:
+                kel = cv2.getStructuringElement(cv2.MORPH_RECT, (23, 23))
+                print('当前第二个参数值为23')
+    elif p2!=-1:
         kel = cv2.getStructuringElement(cv2.MORPH_RECT, (p2, p2))
+        print('当前第二个参数数值为'+str(p2))
 
     mask = cv2.dilate(src,kel)
     imwrite(dir_path+'/5_mask'+str(index)+'.jpg',mask)
@@ -312,13 +335,14 @@ def makedilateMask(src,index):
 
 def processMain(pth,outPath = './result.txt'):
     print('1.获取数字区域')
-    cut_img_arr = getNumArea(pth)
+    cut_img_arr,light = getNumArea(pth)
     if len(cut_img_arr)==0:
         print('err', '未检测到数字区域')
         sys.exit(0)
 
     b_index = 0
     # num_blocks = []
+    print('2.加载小数点模板')
     dot_img = cv2.imread('./dot1.jpg', 0)
     # dot_img = cv2.GaussianBlur(cv2.resize(dot_img,(10,10)),(3,3),1)
     #
@@ -333,7 +357,7 @@ def processMain(pth,outPath = './result.txt'):
     for i in range(2):
         dots.append(cv2.resize(dot_img, (int(10 * (1 + 0.1 * i)), int(10 * (1 + 0.1 * i)))))
     rate = 0.6
-    print('2.加载cnn模型')
+    print('3.加载cnn模型')
     cnn = load_cnn()
 
     result_arr=[]
@@ -353,7 +377,7 @@ def processMain(pth,outPath = './result.txt'):
         #         imwrite('./res1/9_a_num' + str(ind) + '.jpg', a_num)
         #         ind+=1
         print('膨胀数字模板')
-        num_mask = makedilateMask(correct,b_index)
+        num_mask = makedilateMask(correct,light,b_index)
         nums_sets = cutImage(num_mask, correct, 2)
         if len(nums_sets)==0:
             print('err', '未找到数字区域')

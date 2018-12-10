@@ -1,10 +1,5 @@
-'''
-这个版本是不使用其他图片，直接识别的版本。
-使用ssd模型版本
-'''
 
-
-
+# coding=utf-8
 
 from keras import backend as K
 import numpy as np
@@ -17,6 +12,14 @@ import os
 import sys
 # from imageio import imread
 # import peakdetective
+
+'''
+这个版本为不使用其他图片，直接识别的版本。
+使用ssd模型版本
+'''
+
+
+
 
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
@@ -227,6 +230,7 @@ def get_light_mask(src,index):
     img_hsv = cv2.cvtColor(src, cv2.COLOR_BGR2HSV)
 
     H, S, V = cv2.split(img_hsv)
+    l_d = np.mean(V)
     # print('亮度均值：',np.mean(V))
 
     low=200
@@ -238,7 +242,7 @@ def get_light_mask(src,index):
     mask4_l = cv2.inRange(V, low, 255)
     imwrite(dir_path+'/3_light'+str(index)+'.jpg', mask4_l)
 
-    return mask4_l
+    return mask4_l,l_d
 
 def calc_equalize(src):
     new_img = []
@@ -329,7 +333,7 @@ def correctAngle(src):
 
     correct = cv2.warpAffine(origin_src, M, (width, height))
 
-    imwrite(dir_path+'/7_correct.jpg', correct)
+
     return correct
 
 
@@ -401,26 +405,45 @@ def split_line(src):
     return aline
 
 
-def makedilateMask(src):
+def makedilateMask(src,l_d):
     wid = src.shape[1]
     kel = kernel30
-    if wid < 620 and wid > 200:
-        kel= kernel30
-    elif wid > 620 and wid < 1000:
-        kel= kernel40
-    elif wid > 1000 and wid<1400:
-        kel= kernel2
-    elif wid > 1400:
-        kel = kernel85
-    elif wid < 200:
-        kel= kernel5
+    if p2==-1:
+        if wid < 620 and wid > 200 and l_d<100:
+            kel= kernel30
+            print('当前第二个参数值为29')
+        elif wid > 620 and wid < 1000 and l_d<100:
+            kel= kernel40
+            print('当前第二个参数值为40')
+        elif wid > 1000 and wid<1400 and l_d<100:
+            kel= kernel2
+            print('当前第二个参数值为66')
+        elif wid > 1400 and l_d<100:
+            kel = kernel85
+            print('当前第二个参数值为82')
+        elif wid < 200:
+            kel= kernel5
+            print('当前第二个参数值为5')
 
-
-    if p2!=-1:
+        if l_d>100:
+            if wid > 1400:
+                kel = cv2.getStructuringElement(cv2.MORPH_RECT, (48, 48))
+                print('当前第二个参数值为48')
+            elif wid > 1000 and wid<1400:
+                kel = cv2.getStructuringElement(cv2.MORPH_RECT, (40, 40))
+                print('当前第二个参数值为40')
+            elif  wid > 620 and wid < 1000:
+                kel = cv2.getStructuringElement(cv2.MORPH_RECT, (33, 33))
+                print('当前第二个参数值为33')
+            elif wid < 620 and wid > 200:
+                kel = cv2.getStructuringElement(cv2.MORPH_RECT, (23, 23))
+                print('当前第二个参数值为23')
+    elif p2!=-1:
         kel = cv2.getStructuringElement(cv2.MORPH_RECT, (p2, p2))
+        print('当前第二个参数值为'+str(p2))
 
     mask = cv2.dilate(src, kel)
-    imwrite(dir_path+'/5_mask.jpg',mask)
+
 
     return mask
 
@@ -604,17 +627,32 @@ def process1(path,outPath = './result.txt'):
 
     # adapt = adapt_otsu(train_o, index)
     print('2.加载小数点模板')
-    dot_src = cv2.imread('./dot.jpg', 0)
+    # dot_src = cv2.imread('./dot.jpg', 0)
+    #
+    # if dot_src is None:
+    #     print('err','缺失小数点模板')
+    #     sys.exit(0)
+    #
+    # _, dot_src = cv2.threshold(dot_src, 127, 255,cv2.THRESH_BINARY)
+    # _, dot_c, hierarchy = cv2.findContours(dot_src,cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # dot_img = dot_c[0]
 
-    if dot_src is None:
-        print('err','缺失小数点模板')
+    dot_img = cv2.imread('./dot1.jpg', 0)
+    # dot_img = cv2.GaussianBlur(cv2.resize(dot_img,(10,10)),(3,3),1)
+    #
+    # imwrite('./dot1.jpg',dot_img)
+    if dot_img is None:
+        print('err', '缺失小数点模板')
         sys.exit(0)
+    d_w, d_h = dot_img.shape[::-1]
+    dots = []
+    for i in range(3):
+        dots.append(cv2.resize(dot_img, (int(10 / (1 + 0.1 * i)), int(10 / (1 + 0.1 * i)))))
+    for i in range(2):
+        dots.append(cv2.resize(dot_img, (int(10 * (1 + 0.1 * i)), int(10 * (1 + 0.1 * i)))))
+    rate = 0.6
 
-    _, dot_src = cv2.threshold(dot_src, 127, 255,cv2.THRESH_BINARY)
-    _, dot_c, hierarchy = cv2.findContours(dot_src,cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    dot_img = dot_c[0]
-    # cv2.drawContours(dot_src,[dot_img],-1,255)
-    # imwrite('./dot.jpg',dot_src)
+
 
     # dot_img = cv2.imread('./dot1.jpg', 0)
     #     d_w, d_h = dot_img.shape[::-1]
@@ -638,19 +676,21 @@ def process1(path,outPath = './result.txt'):
         # adapt_one = adapt[b[1]:b[3], b[0]:b[2]]
         imwrite(dir_path+'/3_numblock' + str(b_index) + '.jpg', one_)
         print('亮度提取')
-        lightmask = get_light_mask(one_, b_index)
+        lightmask,light = get_light_mask(one_, b_index)
         print('二值化')
         adapt = adapt_otsu(one_, b_index)
         print('二值化与亮度提取结果取交集')
         res_block = fillAnd(lightmask, adapt, b_index)
         kernel = getKernel(res_block.shape[1])
         res_block = cv2.erode(res_block, kernel)
-        imwrite(dir_path+'3_erode_and' + str(b_index) + '.jpg', res_block)
+        imwrite(dir_path+'/3_erode_and' + str(b_index) + '.jpg', res_block)
         num_blocks.append(res_block)
         print('倾斜矫正')
         correct = correctAngle(res_block)
+        imwrite(dir_path + '/4_correct' + str(b_index) + '.jpg', correct)
         print('膨胀数字模板')
-        num_mask = makedilateMask(correct)
+        num_mask = makedilateMask(correct,light)
+        imwrite(dir_path + '/5_mask' + str(b_index) + '.jpg', num_mask)
         nums_sets = cutImage(num_mask, correct, 2)
         if len(nums_sets)==0:
             print('err', '此区域内未检测到数字区域')
@@ -665,7 +705,7 @@ def process1(path,outPath = './result.txt'):
                 # imwrite(dir_path+'/9_a_num' + str(ind) + '.jpg', a_num)
                 # a_num = cv2.resize(a_num, (32, 64))
                 a_num = cv2.GaussianBlur(cv2.resize(a_num, (32, 64)), (3, 3), 1)
-                tmp_dot_max = np.Inf
+                tmp_dot_max = 0
                 x = a_num.astype(float)
                 x *= (1. / 255)
                 x = np.array([x])
@@ -673,29 +713,29 @@ def process1(path,outPath = './result.txt'):
                 result = cnn.predict(x)
                 print('数字：', convert2Num(result))
                 res_list.append(convert2Num(result))
-                # for i in range(5):
-                #     res = cv2.matchTemplate(a_num, dots[i], cv2.TM_CCOEFF_NORMED)
-                #     loc = np.where(res >= rate)
-                #     # print(np.max(res))
-                #     # print(loc)
-                #     for pt in zip(*loc[::-1]):
-                #         if pt[0] >= 16 and pt[1] >= 45:
-                #             if res[pt[1]][pt[0]] > tmp_dot_max:
-                #                 tmp_dot_max = res[pt[1]][pt[0]]
-                #             cv2.rectangle(a_num, pt, (pt[0] + d_w, pt[1] + d_h), 255, 1)
-                _, a_num = cv2.threshold(a_num, 127, 255, cv2.THRESH_BINARY)
-                _, cnts, hierarchy = cv2.findContours(a_num, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                for c in cnts:
-                    tmp = match_dot(dot_img,c)
-                    # print('lunkuo',tmp)
-                    if tmp<tmp_dot_max:
-                        tmp_dot_max = tmp
+                for i in range(5):
+                    res = cv2.matchTemplate(a_num, dots[i], cv2.TM_CCOEFF_NORMED)
+                    loc = np.where(res >= rate)
+                    # print(np.max(res))
+                    # print(loc)
+                    for pt in zip(*loc[::-1]):
+                        if pt[0] >= 16 and pt[1] >= 45:
+                            if res[pt[1]][pt[0]] > tmp_dot_max:
+                                tmp_dot_max = res[pt[1]][pt[0]]
+                            cv2.rectangle(a_num, pt, (pt[0] + d_w, pt[1] + d_h), 255, 1)
+                # _, a_num = cv2.threshold(a_num, 127, 255, cv2.THRESH_BINARY)
+                # _, cnts, hierarchy = cv2.findContours(a_num, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                # for c in cnts:
+                #     tmp = match_dot(dot_img,c)
+                #     # print('lunkuo',tmp)
+                #     if tmp<tmp_dot_max:
+                #         tmp_dot_max = tmp
 
                 line_dots.append(tmp_dot_max)
-                imwrite(dir_path+'/6_a_num' + str(ind) + '.jpg', a_num)
+                imwrite(dir_path+'/6_a_num' + str(b_index) + '_' + str(ind) + '.jpg', a_num)
                 ind += 1
             print('小数点arr:', line_dots)
-            dot_ind = np.where(line_dots == np.min(line_dots))[0][0]
+            dot_ind = np.where(line_dots == np.max(line_dots))[0][0]
             if line_dots[dot_ind] != 0:
                 # print('小数点：',dot_ind)
                 res_list.insert(dot_ind + 1, '.')
