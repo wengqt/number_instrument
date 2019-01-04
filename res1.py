@@ -1,36 +1,30 @@
 
 # coding=utf-8
+'''
+本版本使用简单的腐蚀膨胀，直接获取最大区域为数字区域。
 
-from keras import backend as K
-import numpy as np
-from keras.models import load_model
-from keras_loss_function.keras_ssd_loss import SSDLoss
-from keras_layers.keras_layer_AnchorBoxes import AnchorBoxes
-from ssd_encoder_decoder.ssd_output_decoder import decode_detections, decode_detections_fast
+'''
+
 import cv2
-import os
+import numpy as np
+from keras import backend as K
+from keras.models import load_model
 import sys
-# from imageio import imread
-# import peakdetective
-
-'''
-这个版本为不使用其他图片，直接识别的版本。
-使用ssd模型版本
-'''
-
-
-
-
+import os
+import platform
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 
-kernel1 = cv2.getStructuringElement(cv2.MORPH_RECT, (50, 50))
-kernel2 = cv2.getStructuringElement(cv2.MORPH_RECT, (66, 66))
+kernel1 = cv2.getStructuringElement(cv2.MORPH_RECT,(15, 15))
+kernel2 = cv2.getStructuringElement(cv2.MORPH_RECT,(65, 65))
+kernel3 = cv2.getStructuringElement(cv2.MORPH_RECT,(4, 4))
+
+
 kernel85 = cv2.getStructuringElement(cv2.MORPH_RECT, (82, 82))
 kernel80 = cv2.getStructuringElement(cv2.MORPH_RECT, (90, 90))
-kernel3 = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-kernel4 = cv2.getStructuringElement(cv2.MORPH_RECT, (8, 8))
+
+kernel4 = cv2.getStructuringElement(cv2.MORPH_RECT, (10, 10))
 kernel5 = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
 kernel0 = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
 kernel30 = cv2.getStructuringElement(cv2.MORPH_RECT, (29, 29))
@@ -38,11 +32,9 @@ kernel30 = cv2.getStructuringElement(cv2.MORPH_RECT, (29, 29))
 kernel40 = cv2.getStructuringElement(cv2.MORPH_RECT, (40, 40))
 
 
-
 def imwrite(_path,_img):
     cv2.imencode('.jpg',_img)[1].tofile(_path)
     print('img',_path)
-
 
 
 
@@ -55,6 +47,10 @@ def cutImage(amask, origin,model=1):
     :return:
     '''
     _, contours, hierarchy = cv2.findContours(amask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if contours is None or len(contours)==0:
+        print('err', '未找到可数字区域')
+        sys.exit(0)
+
     # 绘制轮廓
     if model==1:
         c = sorted(contours, key=cv2.contourArea, reverse=True)
@@ -116,203 +112,173 @@ def cutImage(amask, origin,model=1):
         return sorted(sets,key=lambda x:(x[2]))
 
 
-def matchArea(src1,src2):
-    src1 = cv2.cvtColor(cv2.GaussianBlur(src1, (7, 7), 1), cv2.COLOR_RGB2GRAY)
-    src2 = cv2.cvtColor(cv2.GaussianBlur(src2, (7, 7), 1), cv2.COLOR_RGB2GRAY)
-    # 暴力匹配
-    orb = cv2.ORB_create()
-    kp1, des1 = orb.detectAndCompute(src1, None)
-    kp2, des2 = orb.detectAndCompute(src2, None)
-    # 针对ORB算法 NORM_HAMMING 计算特征距离 True判断交叉验证
-    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-    # 特征描述子匹配
-    matches = bf.match(des1, des2)
 
-    matches = sorted(matches, key=lambda x: x.distance)
-    # print(len(matches))
-    img3 = cv2.drawMatches(src1, kp1, src2, kp2, matches[:200], None, matchColor=(0, 255, 0), flags=2)
-    imwrite(dir_path+'/1_match.jpg', img3)
 
-    img_points = np.zeros(src1.shape[:2], np.uint8)
-    for point in kp1:
-        cv2.circle(img_points, (int(point.pt[0]), int(point.pt[1])), 30, 255, -1)
+def get_contours_area(mask, cut):
+    _, contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    # img_points = cv2.morphologyEx(img_points, cv2.MORPH_OPEN, kernel5, iterations=5)
-    img_points = cv2.dilate(img_points, getKernel_2(src1.shape[1]), iterations=4)
-    imwrite(dir_path+'/2_points.jpg', img_points)
+    cnts = sorted(contours, key=cv2.contourArea, reverse=True)
 
-    return img_points
+    cut_arr=[]
+    rect_arr=[]
 
-def predict_num_area(src):
+    for c in cnts:
+        rect = cv2.boundingRect(c)
+        rect_arr.append(rect)
+
+    rect_arr = sorted(rect_arr, key=lambda a: a[0])
+    for [x, y, w, h] in rect_arr:
+        new_img = cut[y:y + h, x:x + w]
+        small_mask = mask[y:y + h, x:x + w]
+        if cv2.countNonZero(new_img)/cv2.countNonZero(small_mask)<0.5:
+            cut_arr.append(new_img)
+
+
+
+    return cut_arr
+
+
+
+
+
+
+
+
+def bright_avg(src):
     '''
-    :param src:opencv读取的图
-    :return: scale:缩放倍率，mask:数字区域的全白图,all_blocks:矩形坐标
+    计算亮度
+    :param src: 灰度图
+    :return:
     '''
-
-    model_path = 'ssd7_pascal_07_epoch-17_loss-0.8387_val_loss-0.8608.h5'
-    # We need to create an SSDLoss object in order to pass that to the model loader.
-    ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)
-
-    K.clear_session()  # Clear previous models from memory.
-
-    model = load_model(model_path, custom_objects={'AnchorBoxes': AnchorBoxes,
-                                                   'compute_loss': ssd_loss.compute_loss})
-    img_height = 341
-    img_width = 256
-    scale_y = src.shape[0]/341
-    scale_x = src.shape[1]/256
-    normalize_coords = True
-    orig_images = []  # Store the images here.
-    input_images = []  # Store resized versions of the images here.
-
-    # We'll only load one image in this example.
-    # filename = '../NumInstrument/img/im3.JPG'
-    # filename='../ssd_trains/JPEGImages/image1024.JPG'
-
-    # img = cv2.imread(filename)
-    img = cv2.resize(src, (img_width, img_height))
-    orig_images.append(img)
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    input_images.append(img)
-    input_images = np.array(input_images)
-
-    y_pred = model.predict(input_images)
-    # 4: Decode the raw predictions in `y_pred`.
-    confidence_threshold = 0.5
-
-    y_pred_thresh = [y_pred[k][y_pred[k, :, 1] > confidence_threshold] for k in range(y_pred.shape[0])]
-
-    y_pred_decoded = decode_detections(y_pred,
-                                       confidence_thresh=0.5,
-                                       iou_threshold=0.45,
-                                       top_k=200,
-                                       normalize_coords=True,
-                                       img_height=img_height,
-                                       img_width=img_width)
-
-    np.set_printoptions(precision=2, suppress=True, linewidth=90)
-    # print("Predicted boxes:\n")
-    # print('   class   conf xmin   ymin   xmax   ymax')
-    # print(y_pred_decoded[0])
-    mask = np.zeros((341,256),np.uint8)
-    for box in y_pred_decoded[0]:
-        xmin = int(box[2])
-        ymin = int(box[3])
-        xmax = int(box[4] + 5)
-        ymax = int(box[5] + 5 )
-        cv2.rectangle(mask, (xmin, ymin), (xmax, ymax), 255, -1)
-        cv2.rectangle(input_images[0], (xmin, ymin), (xmax, ymax), 255, 2)
-
-    input_images[0] = cv2.cvtColor(input_images[0], cv2.COLOR_RGB2BGR)
+    avg,stdd = cv2.meanStdDev(src)
+    print(avg,stdd)
+    return avg[0][0],stdd[0][0]
 
 
-    # mask = cv2.dilate(mask, kernel4)
-
-    imwrite(dir_path+'/4_pre_mask.jpg', mask)
-    # imwrite(dir_path+'/4_pre_res' + str(index) + '.jpg', input_images[0])
-
-    all_blocks = cutImage(mask,input_images[0],-1)
-    # print(all_blocks,scale)
-    if len(all_blocks)==0:
-        print('err', '未找到数字区域')
-        sys.exit(0)
-
-    tmp=[]
-    for abox in all_blocks:
-        aa=[int(abox[0]*scale_x),int(abox[1]*scale_y),int(abox[2]*scale_x),int(abox[3]*scale_y)]
-        tmp.append(aa)
-    all_blocks = tmp
-    K.clear_session()
-    return mask,all_blocks
-
-def get_light_mask(src,index):
+def split_light(src,index=0):
     # src = calc_equalize(src)
     img_hsv = cv2.cvtColor(src, cv2.COLOR_BGR2HSV)
-
+    # img_gray = cv2.cvtColor(src,cv2.COLOR_BGR2GRAY)
     H, S, V = cv2.split(img_hsv)
     l_d = np.mean(V)
-    # print('亮度均值：',np.mean(V))
+    # imwrite(dir_path + '/1_gray' + str(index) + '.jpg', img_gray)
+    # l_d,_ = bright_avg(img_gray)
+    print('亮度均值：',l_d)
+    avg_light = np.mean(V)
+    low=254
+    if avg_light >=100:
+        low=250
+    elif avg_light >=125:
+        low = 180
 
-    low=200
-    if np.mean(V) >=100:
-        low=240
-    if p1!=-1:
+    if p1 != -1:
         low = p1
     print('当前亮度提取低阈值为' + str(low))
     mask4_l = cv2.inRange(V, low, 255)
-    imwrite(dir_path+'/3_light'+str(index)+'.jpg', mask4_l)
-
+    # imwrite('./res1/5_light'+str(index)+'.jpg', mask4_l)
+    imwrite(dir_path+'/1_light'+str(index)+'.jpg', mask4_l)
     return mask4_l,l_d
 
-def calc_equalize(src):
-    new_img = []
-    sp = cv2.split(src)
-    for i in range(3):
-        new_img.append(cv2.equalizeHist(sp[i]))
-    new_img = np.array(new_img)
-    new_img = cv2.merge(new_img)
-    imwrite(dir_path+'/0_make_equalize.jpg', new_img)
-    return new_img
 
 
 
+def getNumArea(pth):
+    # img1=cv2.imread("./img/front/dark/d8.jpg")
+    if platform.system() == 'Windows':
+        # path = path.encode('utf-8')
+        # path = path.decode()
+        img1 = cv2.imdecode(np.fromfile(pth, dtype=np.uint8),cv2.IMREAD_COLOR)
+        # img1 = cv2.cvtColor(img1,cv2.COLOR_RGB2BGR)
+    else:
+        img1 = cv2.imread(pth)
 
-def adapt_otsu(src,index):
-    train_gray = cv2.cvtColor(src, cv2.COLOR_RGB2GRAY)
-    threshold, bina2 = cv2.threshold(train_gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    imwrite(dir_path+'/3_otsu' + str(index) + '.jpg', bina2)
-    return bina2
+    # img1=cv2.imread("./img/front/pic10.jpg")
+    # img1=cv2.imread("./img/多角度拍摄/角度2/a2_12.jpg")
+    # canny = cv2.cvtColor(cv2.GaussianBlur(img1, (7, 7), 0), cv2.COLOR_BGR2GRAY)
+    if img1 is None:
+        print('err','图片路径有误'+pth)
+    imgGray = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
+    # imgGray = cv2.bilateralFilter(imgGray, 9, 70, 70)
+    # imgGray = cv2.GaussianBlur(imgGray, (7, 7), 1)
+    # bright_avg(imgGray)
+    # imgAdapt = cv2.adaptiveThreshold(imgGray,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C,cv2.THRESH_BINARY,13,2)
+    # imwrite(dir_path+'/0_adapt.jpg',imgAdapt)
+    #
+    # opened = cv2.morphologyEx(imgAdapt, cv2.MORPH_OPEN,kernel1)
+    # imwrite(dir_path+'/0_opened1.jpg',opened)
+    #
+    # opened = cv2.erode(opened, kernel3, iterations=4)
+    # opened = cv2.dilate(opened, kernel2, iterations=5)
+    # imwrite(dir_path+'/0_opened2.jpg', opened)
+    threshold, imgOtsu = cv2.threshold(imgGray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    imwrite(dir_path+'/1_imgOtsu.jpg', imgOtsu)
+    light_mask,light = split_light(img1)
+
+    img_tmp = cv2.bitwise_and(imgOtsu,light_mask)
+    img_tmp = cv2.erode(img_tmp, kernel3, iterations=1)
+    # imwrite(dir_path+'/0_img_tmp.jpg', img_tmp)
+    w_ = img1.shape[0]
+    if w_>1500 and w_<2000:
+        t_ = 4
+    elif w_>1000 and w_<1500:
+        t_ = 3
+    elif w_<1000 and w_>500:
+        t_=2
+    elif w_<500:
+        t_=1
+    elif w_>2000:
+        t_=5
+    img_mask = cv2.dilate(img_tmp, kernel2, iterations=t_)
+    imwrite(dir_path+'/1_img_tmp.jpg', img_mask)
+
+    cut_img_arr=get_contours_area(img_mask,img_tmp)
+    for i in range(len(cut_img_arr)):
+        imwrite(dir_path+'/1_cut_img'+str(i)+'.jpg', cut_img_arr[i])
+    return cut_img_arr,light
 
 
-def fillAnd(src1,src2,index,mask=None):
-    and_img =  cv2.bitwise_and(src1, src2,mask =mask)
-    imwrite(dir_path+'/3_and' + str(index) + '.jpg', and_img)
-    return and_img
+def load_cnn():
+    model_path = './myCNN.h5'
+    K.clear_session()  # Clear previous models from memory.
+    # cnn_model = load_model(model_path)
+    try:
+        cnn_model = load_model(model_path)
+    except:
+        print('err', '程序目录下找不到cnn模型')
+        sys.exit(0)
+    return cnn_model
 
-def getKernel(width):
-    if width<500 and width>200:
-        return kernel3
-    elif width>500 and width<1000:
-        return kernel5
-    elif width>1000:
-        return kernel4
-    elif width<200:
-        return kernel0
+def convert2Num(onehot):
+    '''
 
-def getKernel_2(wid):
-    kel = kernel30
-    if wid < 500 and wid > 200:
-        kel = kernel30
-    elif wid > 500 and wid < 1200:
-        kel = kernel40
-    elif wid > 1200 and wid < 2000:
-        kel = kernel2
-    elif wid >2000:
-        kel = kernel80
-    elif wid < 200:
-        kel = kernel5
+    :param onehot: type nparray only
+    :return:
+    '''
 
-    return kel
+    p= np.where(onehot==np.max(onehot))
+    # print(onehot)
+    # print(p)
+    return str(int(p[1][0]))
 
-def correctAngle(src):
+def correctAngle(src,index):
     origin_src = src.copy()
     if src.shape[1]<300:
         default_v = 80
     else:
         default_v =150
     canny = cv2.Canny(cv2.GaussianBlur(src, (5, 5), 0), 0, default_v)
-    imwrite(dir_path+'/4_canny.jpg', canny)
+    imwrite(dir_path+'/4_canny'+str(index)+'.jpg', canny)
     canny = cv2.dilate(canny, kernel3, iterations=1)
-    # imwrite(dir_path+'/4_cannyDilate.jpg', canny)
+    # imwrite(dir_path+'/7_cannyDilate'+str(index)+'.jpg', canny)
 
     lines = cv2.HoughLines(canny, 1, np.pi / 180, 50)
+    if lines is None or len(lines)==0:
+        print('err', '未检测到直线，倾斜矫正失败！')
+        sys.exit(0)
     numLine = 0
     angle = 0
 
     (height,width) = src.shape[:2]
-    if lines is None or len(lines)==0:
-        print('err', '未检测到直线，倾斜矫正失败！')
-        sys.exit(0)
 
     for ls in lines:
         for line in ls:
@@ -333,99 +299,29 @@ def correctAngle(src):
 
     correct = cv2.warpAffine(origin_src, M, (width, height))
 
-
+    imwrite(dir_path+'/4_correct'+str(index)+'.jpg', correct)
     return correct
 
-
-
-
-
-
-
-
-def get_border(arr,delta):
-    '''
-
-    :param arr: input array
-    :param delta: the min range between arr item
-    :return: border
-    '''
-    getTwo=False
-    border=[]
-    for i in range(len(arr)):
-        if getTwo==False:
-            if arr[i] !=0:
-                border.append(i)
-                getTwo = True
-        else:
-            if arr[i] ==0:
-                if i>border[len(border)-1]+delta:
-                    border.append(i)
-                    getTwo = False
-                else:
-                    del border[len(border)-1]
-                    getTwo = False
-            if i>=len(arr)-1:
-                border.append(i)
-
-    return border
-
-
-
-def split_line(src):
-    (h1, w1) = src.shape
-    horizon = [0 for z in range(0, h1)]
-
-    for i in range(0, h1):  # 遍历一行
-        for j in range(0, w1):  # 遍历一列
-            if src[i, j] == 255:
-                horizon[i] += 1
-
-    newHorizon = np.zeros([h1, w1], np.uint8)
-
-    for i in range(0, h1):
-        for j in range(0, horizon[i]):
-            newHorizon[i, j] = 255
-
-    imwrite(dir_path+'/8_newHorizon.jpg', newHorizon)
-
-    from matplotlib.pyplot import plot, scatter, show
-    border_arr = get_border(horizon,10)
-
-    plot(horizon)
-    scatter(np.array(border_arr), np.zeros(len(border_arr)), color='blue')
-    show()
-    # for (pos,val) in mintab:
-    aline=[]
-    for i in range(0,len(border_arr)-1,2):
-        y1 = border_arr[i]
-        y2 = border_arr[i+1]
-        aline.append(src[y1:y2,:])
-
-    return aline
-
-
-def makedilateMask(src,l_d):
+def makedilateMask(src,l_d,index):
     wid = src.shape[1]
     kel = kernel30
     if p2==-1:
-        if wid < 620 and wid > 200 and l_d<100:
+        if wid < 620 and wid > 200 and l_d>60:
             kel= kernel30
-            print('当前第二个参数值为29')
-        elif wid > 620 and wid < 1000 and l_d<100:
+            print('当前第二个参数数值为29')
+        elif wid > 620 and wid < 1000 and l_d>60:
             kel= kernel40
-            print('当前第二个参数值为40')
-        elif wid > 1000 and wid<1400 and l_d<100:
+            print('当前第二个参数数值为40')
+        elif wid > 1000 and wid<1400 and l_d>60:
             kel= kernel2
-            print('当前第二个参数值为66')
-        elif wid > 1400 and l_d<100:
+            print('当前第二个参数数值为65')
+        elif wid > 1400 and l_d>60:
             kel = kernel85
-            print('当前第二个参数值为82')
+            print('当前第二个参数数值为82')
         elif wid < 200:
             kel= kernel5
-            print('当前第二个参数值为5')
-
-        if l_d>100:
+            print('当前第二个参数数值为5')
+        if l_d<60:
             if wid > 1400:
                 kel = cv2.getStructuringElement(cv2.MORPH_RECT, (48, 48))
                 print('当前第二个参数值为48')
@@ -440,209 +336,31 @@ def makedilateMask(src,l_d):
                 print('当前第二个参数值为23')
     elif p2!=-1:
         kel = cv2.getStructuringElement(cv2.MORPH_RECT, (p2, p2))
-        print('当前第二个参数值为'+str(p2))
+        print('当前第二个参数数值为'+str(p2))
 
-    mask = cv2.dilate(src, kel)
-
-
+    mask = cv2.dilate(src,kel)
+    imwrite(dir_path+'/5_mask'+str(index)+'.jpg',mask)
     return mask
 
 
-def load_cnn():
-    model_path = './myCNN.h5'
-    K.clear_session()  # Clear previous models from memory.
-    try:
-        cnn_model = load_model(model_path)
-    except:
-        print('err', '程序目录下找不到cnn模型')
+
+
+def processMain(pth,outPath = './result.txt'):
+    print('1.获取数字区域')
+    cut_img_arr,light = getNumArea(pth)
+    if len(cut_img_arr)==0:
+        print('err', '未检测到数字区域')
         sys.exit(0)
 
-    return cnn_model
-
-
-def convert2Num(onehot):
-    '''
-
-    :param onehot: type nparray only
-    :return:
-    '''
-
-    p= np.where(onehot==np.max(onehot))
-    # print(onehot)
-    # print(p)
-    return str(int(p[1][0]))
-
-
-# def main_process(img_path):
-#     query = cv2.imread('./img/query.jpg')
-#
-#     # query = cv2.cvtColor(cv2.GaussianBlur(query, (7, 7), 1), cv2.COLOR_RGB2GRAY)
-#
-#     # train_o = cv2.imread('./img/front/pic2.jpg') #待检测图
-#     # train_o = cv2.imread('./img/多角度拍摄/角度2/a2_8.jpg')
-#     # train_o = cv2.imread("./img/front/dark/d5.jpg")
-#     # train_o = cv2.imread('./img/多角度拍摄/角度4/aa11.jpg')
-#     # train_o = cv2.imread('./img/im2.jpg')
-#     train_o = cv2.imread('./img/多角度拍摄/角度1/a1_19.jpg')
-#     # train_o=cv2.imread('./img/front/pic5.jpg')
-#     # train_o=cv2.imread(img_path)
-#
-#     train = train_o
-#
-#     im_zeros = matchArea(train,query)
-#     instru_area = cutImage(im_zeros,train)
-#
-#     area_mask,blocks_sets = predict_num_area(instru_area)
-#
-#     b_index=0
-#     num_blocks=[]
-#     dot_img = cv2.imread('./dot1.jpg',0)
-#     # dot_img = cv2.GaussianBlur(cv2.resize(dot_img,(10,10)),(3,3),1)
-#     #
-#     # imwrite('./dot1.jpg',dot_img)
-#     dot_img = cv2.imread('./dot1.jpg',0)
-#     d_w, d_h = dot_img.shape[::-1]
-#     dots = []
-#     for i in range(3):
-#         dots.append(cv2.resize(dot_img,(int(10/(1+0.1*i)),int(10/(1+0.1*i)))))
-#     for i in range(2):
-#         dots.append(cv2.resize(dot_img,(int(10*(1+0.1*i)),int(10*(1+0.1*i)))))
-#     rate = 0.6
-#
-#     cnn = load_cnn()
-#     for b in blocks_sets:
-#         b_index+=1
-#         one_=instru_area[b[1]:b[3],b[0]:b[2]]
-#         imwrite(dir_path+'/5_numblock' + str(b_index) + '.jpg', one_)
-#         lightmask = get_light_mask(one_,b_index)
-#         adapt = adapt_otsu(one_,b_index)
-#         res_block = fillAnd(lightmask,adapt,b_index)
-#         kernel = getKernel(res_block.shape[1])
-#         res_block= cv2.erode(res_block,kernel)
-#         imwrite(dir_path+'/6_erode_and' + str(b_index) + '.jpg', res_block)
-#         num_blocks.append(res_block)
-#         correct =correctAngle(res_block)
-#
-#         # lines = split_line(correct)
-#         # for one_line in lines:
-#         #     num_mask = makedilateMask(one_line)
-#         #     nums_sets = cutImage(num_mask,one_line,-1)
-#         #     ind=0
-#         #     for one_set in nums_sets:
-#         #         print(one_set)
-#         #         a_num = one_line[one_set[1]:one_set[3], one_set[0]:one_set[2]]
-#         #         imwrite(dir_path+'/9_a_num' + str(ind) + '.jpg', a_num)
-#         #         ind+=1
-#
-#         num_mask = makedilateMask(correct)
-#         nums_sets = cutImage(num_mask, correct, 2)
-#         ind = 0
-#         for line in nums_sets:
-#             line_dots =[]
-#             res_list =[]
-#             for one_set in line:
-#                 a_num = correct[one_set[1]:one_set[3], one_set[0]:one_set[2]]
-#                 # imwrite(dir_path+'/9_a_num' + str(ind) + '.jpg', a_num)
-#                 a_num =cv2.GaussianBlur(cv2.resize(a_num,(32,64)),(3,3),1)
-#                 tmp_dot_max = 0
-#                 x = a_num.astype(float)
-#                 x *= (1. / 255)
-#                 x = np.array([x])
-#                 x = x.reshape(1,64,32,1)
-#                 result = cnn.predict(x)
-#                 print('数字：',convert2Num(result))
-#                 res_list.append(convert2Num(result))
-#                 for i in range(5):
-#                     res = cv2.matchTemplate(a_num, dots[i], cv2.TM_CCOEFF_NORMED)
-#                     loc = np.where(res >= rate)
-#                     # print(np.max(res))
-#                     # print(loc)
-#                     for pt in zip(*loc[::-1]):
-#                         if pt[0]>=16 and pt[1]>=45:
-#                             if res[pt[1]][pt[0]] >tmp_dot_max:
-#                                 tmp_dot_max =res[pt[1]][pt[0]]
-#                             cv2.rectangle(a_num, pt, (pt[0] + d_w, pt[1] + d_h), 255, 1)
-#                 line_dots.append(tmp_dot_max)
-#                 imwrite(dir_path+'/9_a_num' + str(ind) + '.jpg', a_num)
-#                 ind += 1
-#             print('小数点arr:',line_dots)
-#             dot_ind = np.where(line_dots == np.max(line_dots))[0][0]
-#             if line_dots[dot_ind]!=0:
-#                 # print('小数点：',dot_ind)
-#                 res_list.insert(dot_ind+1,'.')
-#             else:
-#                 print('小数点检测失败')
-#
-#             result = ''.join(res_list)
-#             print('最后结果：',result)
-
-
-
-def split_light(src,index=0):
-    # src = calc_equalize(src)
-    img_hsv = cv2.cvtColor(src, cv2.COLOR_BGR2HSV)
-
-    H, S, V = cv2.split(img_hsv)
-    print('亮度均值：',np.mean(V))
-    avg_light = np.mean(V)
-    low=254
-    if avg_light >=100:
-        low=250
-    elif avg_light >=125:
-        low = 180
-    mask4_l = cv2.inRange(V, low, 255)
-    # imwrite(dir_path+'/5_light'+str(index)+'.jpg', mask4_l)
-    imwrite(dir_path+'/0_light'+str(index)+'.jpg', mask4_l)
-    return mask4_l
-
-
-
-
-
-def match_dot(dot_cnt,src_cnt):
-    out = cv2.matchShapes(dot_cnt, src_cnt, 1 ,0.0)
-    return out
-
-
-def process1(path,outPath = './result.txt'):
-    # train_o = cv2.imread('./img/多角度拍摄/角度1/a1_15.jpg')
-    # train_o = cv2.imread('./img/多角度拍摄/角度4/aa11.jpg')
-    # train_o = cv2.imread('./img/多角度拍摄/角度3/a_8.jpg')
-    # train_o = cv2.imread('./img/im3.jpg')
-    train_o = cv2.imread(path)
-    if train_o is None:
-        print('err', '找不到图片'+path)
-        sys.exit(0)
-    # train_o = cv2.imread("./img/front/dark/d9.jpg")
-    # train_o = cv2.imread("./img/front/pic20.jpg")
-
-    # train_gray =cv2.cvtColor(train_o,cv2.COLOR_BGR2GRAY)
-
-
-    #
-    # if light>80:
-    # light_mask = split_light(train_o,index)
-    print('1.获得数字区域')
-    area_mask, blocks_sets = predict_num_area(train_o)
-
-    # adapt = adapt_otsu(train_o, index)
+    b_index = 0
+    # num_blocks = []
     print('2.加载小数点模板')
-    # dot_src = cv2.imread('./dot.jpg', 0)
-    #
-    # if dot_src is None:
-    #     print('err','缺失小数点模板')
-    #     sys.exit(0)
-    #
-    # _, dot_src = cv2.threshold(dot_src, 127, 255,cv2.THRESH_BINARY)
-    # _, dot_c, hierarchy = cv2.findContours(dot_src,cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    # dot_img = dot_c[0]
-
     dot_img = cv2.imread('./dot1.jpg', 0)
     # dot_img = cv2.GaussianBlur(cv2.resize(dot_img,(10,10)),(3,3),1)
     #
     # imwrite('./dot1.jpg',dot_img)
     if dot_img is None:
-        print('err', '缺失小数点模板')
+        print('err','缺失小数点模板')
         sys.exit(0)
     d_w, d_h = dot_img.shape[::-1]
     dots = []
@@ -651,59 +369,39 @@ def process1(path,outPath = './result.txt'):
     for i in range(2):
         dots.append(cv2.resize(dot_img, (int(10 * (1 + 0.1 * i)), int(10 * (1 + 0.1 * i)))))
     rate = 0.6
-
-
-
-    # dot_img = cv2.imread('./dot1.jpg', 0)
-    #     d_w, d_h = dot_img.shape[::-1]
-    #     dots = []
-    #     for i in range(3):
-    #         dots.append(cv2.resize(dot_img,(int(10/(1+0.1*i)),int(10/(1+0.1*i)))))
-    #     for i in range(2):
-    #         dots.append(cv2.resize(dot_img,(int(10*(1+0.1*i)),int(10*(1+0.1*i)))))
-    #     rate = 0.6
-
-
-
-    print('3.处理数字')
-    b_index=0
-    num_blocks=[]
-    result_arr=[]
+    print('3.加载cnn模型')
     cnn = load_cnn()
-    for b in blocks_sets:
+
+    result_arr=[]
+    for cut_img in cut_img_arr:
         b_index += 1
-        one_ = train_o[b[1]:b[3], b[0]:b[2]]
-        # adapt_one = adapt[b[1]:b[3], b[0]:b[2]]
-        imwrite(dir_path+'/3_numblock' + str(b_index) + '.jpg', one_)
-        print('亮度提取')
-        lightmask,light = get_light_mask(one_, b_index)
-        print('二值化')
-        adapt = adapt_otsu(one_, b_index)
-        print('二值化与亮度提取结果取交集')
-        res_block = fillAnd(lightmask, adapt, b_index)
-        kernel = getKernel(res_block.shape[1])
-        res_block = cv2.erode(res_block, kernel)
-        imwrite(dir_path+'/3_erode_and' + str(b_index) + '.jpg', res_block)
-        num_blocks.append(res_block)
         print('倾斜矫正')
-        correct = correctAngle(res_block)
-        imwrite(dir_path + '/4_correct' + str(b_index) + '.jpg', correct)
+        correct = correctAngle(cut_img,b_index)
+
+        # lines = split_line(correct)
+        # for one_line in lines:
+        #     num_mask = makedilateMask(one_line)
+        #     nums_sets = cutImage(num_mask,one_line,-1)
+        #     ind=0
+        #     for one_set in nums_sets:
+        #         print(one_set)
+        #         a_num = one_line[one_set[1]:one_set[3], one_set[0]:one_set[2]]
+        #         imwrite('./res1/9_a_num' + str(ind) + '.jpg', a_num)
+        #         ind+=1
         print('膨胀数字模板')
-        num_mask = makedilateMask(correct,light)
-        imwrite(dir_path + '/5_mask' + str(b_index) + '.jpg', num_mask)
+        num_mask = makedilateMask(correct,light,b_index)
         nums_sets = cutImage(num_mask, correct, 2)
         if len(nums_sets)==0:
-            print('err', '此区域内未检测到数字区域')
+            print('err', '未找到数字区域')
             sys.exit(0)
-
         ind = 0
+
         for line in nums_sets:
             line_dots = []
             res_list = []
             for one_set in line:
                 a_num = correct[one_set[1]:one_set[3], one_set[0]:one_set[2]]
-                # imwrite(dir_path+'/9_a_num' + str(ind) + '.jpg', a_num)
-                # a_num = cv2.resize(a_num, (32, 64))
+                # imwrite('./res1/9_a_num' + str(ind) + '.jpg', a_num)
                 a_num = cv2.GaussianBlur(cv2.resize(a_num, (32, 64)), (3, 3), 1)
                 tmp_dot_max = 0
                 x = a_num.astype(float)
@@ -723,14 +421,6 @@ def process1(path,outPath = './result.txt'):
                             if res[pt[1]][pt[0]] > tmp_dot_max:
                                 tmp_dot_max = res[pt[1]][pt[0]]
                             cv2.rectangle(a_num, pt, (pt[0] + d_w, pt[1] + d_h), 255, 1)
-                # _, a_num = cv2.threshold(a_num, 127, 255, cv2.THRESH_BINARY)
-                # _, cnts, hierarchy = cv2.findContours(a_num, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                # for c in cnts:
-                #     tmp = match_dot(dot_img,c)
-                #     # print('lunkuo',tmp)
-                #     if tmp<tmp_dot_max:
-                #         tmp_dot_max = tmp
-
                 line_dots.append(tmp_dot_max)
                 imwrite(dir_path+'/6_a_num' + str(b_index) + '_' + str(ind) + '.jpg', a_num)
                 ind += 1
@@ -745,39 +435,12 @@ def process1(path,outPath = './result.txt'):
             result = ''.join(res_list)
             print('res', result)
             result_arr.append(result)
-
     f = open(outPath, 'w')
-    f.write('\n' + path)
+    f.write('\n' + pth)
     for i in range(len(result_arr)):
-        f.write(' 结果' + str(i) + '：' + str(result_arr[i]))
+        f.write(' 结果'+str(i) + '：' + str(result_arr[i]))
     f.close()
     print('结果输出在' + outPath)
-
-
-
-def bright_avg(src):
-    '''
-    计算亮度
-    :param src: 灰度图
-    :return:
-    '''
-    avg,stdd = cv2.meanStdDev(src)
-    print(avg)
-    return avg[0][0],stdd[0][0]
-
-
-# if __name__ == '__main__':
-#     for i in range(1,37):
-#         # pa = './img/front/pic'+str(i)+'.jpg'
-#         pa = './img/多角度拍摄/角度2/a2_'+str(i)+'.jpg'
-#         # pa = './img/front/dark/d'+str(i)+'.jpg'
-#         # pa = './img/front/pic'+str(i)+'.jpg'
-#         # main_process(pa)
-#         process1(pa,i)
-
-
-
-## 问题图片：cv2.imread('./img/多角度拍摄/角度3/a_3.jpg') 数字分割
 
 
 if __name__ == '__main__':
@@ -852,7 +515,7 @@ if __name__ == '__main__':
                 os.makedirs(dir_path)
                 # os.makedirs(dir_path+'/num1')
                 # os.makedirs(dir_path+'/num2')
-            process1(img_path)
+            processMain(img_path)
     else:
         out_path = args[args.index('out') + 1]
         print('图片路径：', args[0])
@@ -866,8 +529,4 @@ if __name__ == '__main__':
             os.makedirs(dir_path)
             # os.makedirs(dir_path + '/num1')
             # os.makedirs(dir_path + '/num2')
-        process1(img_path, out_path)
-
-
-
-
+        processMain(img_path, out_path)
