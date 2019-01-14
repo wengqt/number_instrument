@@ -206,7 +206,7 @@ def predict_num_area(src):
     '''
 
     # model_path = 'ssd7_pascal_07_epoch-17_loss-0.8387_val_loss-0.8608.h5'
-    model_path = 'ssd7_pascal_07_epoch-02_loss-0.0000_val_loss-0.0000.h5'
+    model_path = 'ssd7_4.h5'
     # We need to create an SSDLoss object in order to pass that to the model loader.
     ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)
 
@@ -214,8 +214,8 @@ def predict_num_area(src):
 
     model = load_model(model_path, custom_objects={'AnchorBoxes': AnchorBoxes,
                                                    'compute_loss': ssd_loss.compute_loss})
-    img_height = 341
-    img_width = 256
+    # img_height = 341
+    # img_width = 256
     img_height = 256
     img_width = 456
     scale_y = src.shape[0]/img_height
@@ -284,7 +284,7 @@ def predict_num_area(src):
     for box in y_pred_decoded[0]:
         xmin = int(box[2]-5) if int(box[2]-5)>=0 else 0
         ymin = int(box[3])
-        xmax = int(box[4] + 5)
+        xmax = int(box[4] + 7)
         ymax = int(box[5] + 5 )
         cv2.rectangle(mask, (xmin, ymin), (xmax, ymax), 255, -1)
         mask_sets.append([xmin,ymin,xmax,ymax])
@@ -364,10 +364,13 @@ def get_light_mask(src,index):
         low=240
     elif l_d>=130:
         low = 250
-    elif l_d <50:
+    elif l_d <50 and l_d>30:
         low = 240
     elif l_d>50 and l_d<100:
         low = 240
+    elif l_d<30:
+        low = 150
+
     if p1!=-1:
         low = p1
     print('当前亮度提取低阈值为' + str(low))
@@ -460,9 +463,11 @@ def correctAngle(src,img2=None):
 
             # if angle > (np.pi / 2):
             #     angle = angle - np.pi
-
-    averageAngle = (angle / float(numLine)) * 180 / np.pi
-    print('averageAngle : %f' % averageAngle)
+    try:
+        averageAngle = (angle / float(numLine)) * 180 / np.pi
+        print('averageAngle : %f' % averageAngle)
+    except:
+        return src, canny
 
     M = cv2.getRotationMatrix2D((width / 2, height / 2), averageAngle - 90, 1.0)
 
@@ -591,16 +596,16 @@ def makedilateMask(src,l_d):
     kel = kernel30
     if p2==-1:
         if wid < 500 and wid > 200 and l_d<100:
-            kel=  cv2.getStructuringElement(cv2.MORPH_RECT, (5, 15))
+            kel=  cv2.getStructuringElement(cv2.MORPH_RECT, (4, 15))
             print('当前第二个参数值为15')
         elif wid > 500 and wid < 1000 and l_d<100:
-            kel=  cv2.getStructuringElement(cv2.MORPH_RECT, (6, 22))
+            kel=  cv2.getStructuringElement(cv2.MORPH_RECT, (4, 24))
             print('当前第二个参数值为20')
         elif wid > 1000 and wid<1400 and l_d<100:
-            kel=  cv2.getStructuringElement(cv2.MORPH_RECT, (7, 22))
+            kel=  cv2.getStructuringElement(cv2.MORPH_RECT, (5, 25))
             print('当前第二个参数值为20')
         elif wid > 1400 and l_d<100:
-            kel =  cv2.getStructuringElement(cv2.MORPH_RECT, (8, 24))
+            kel =  cv2.getStructuringElement(cv2.MORPH_RECT, (8, 26))
             print('当前第二个参数值为20')
         elif wid < 200:
             kel= kernel5
@@ -611,16 +616,16 @@ def makedilateMask(src,l_d):
                 kel = cv2.getStructuringElement(cv2.MORPH_RECT, (10, 24))
                 print('当前第二个参数值为22')
             elif wid > 1000 and wid<1400:
-                kel = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 22))
+                kel = cv2.getStructuringElement(cv2.MORPH_RECT, (6, 22))
                 print('当前第二个参数值为16')
             elif  wid > 620 and wid < 1000:
-                kel = cv2.getStructuringElement(cv2.MORPH_RECT, (6, 20))
+                kel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 20))
                 print('当前第二个参数值为14')
             elif wid < 620 and wid > 200:
-                kel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 15))
+                kel = cv2.getStructuringElement(cv2.MORPH_RECT, (4, 20))
                 print('当前第二个参数值为12')
     elif p2!=-1:
-        kel = cv2.getStructuringElement(cv2.MORPH_RECT, (8, p2))
+        kel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, p2))
         print('当前第二个参数值为'+str(p2))
 
     mask = cv2.dilate(src, kel)
@@ -773,7 +778,7 @@ def split_light(src,index=0):
     avg_light = np.mean(V)
     low=254
     if avg_light >=100:
-        low=250
+        low=240
     elif avg_light >=125:
         low = 180
     mask4_l = cv2.inRange(V, low, 255)
@@ -810,6 +815,7 @@ def process1(path,outPath = './result.txt'):
     # train_o = cv2.imread("./img/front/pic20.jpg")
 
     # train_gray =cv2.cvtColor(train_o,cv2.COLOR_BGR2GRAY)
+    train_1=train_o.copy()
     all_light, stdd = bright_avg(train_o)
     print('gamma校正前的平均亮度', all_light)
     if all_light < 70:
@@ -830,7 +836,7 @@ def process1(path,outPath = './result.txt'):
     print('1.获得数字区域')
     area_mask, blocks_sets, mask_img = predict_num_area(train_o)
 
-    train_o = cv2.bitwise_and(train_o,train_o,mask=mask_img)
+    train_o = cv2.bitwise_and(train_1,train_1,mask=mask_img)
     # train_o = calc_equalize(train_o)
     # train_o = calc_gamma(train_o, 4.0)
     # adapt = adapt_otsu(train_o, index)
@@ -1029,7 +1035,7 @@ def process1(path,outPath = './result.txt'):
             result_arr.append(result)
             line_ind +=1
 
-    f = open(outPath, 'a')
+    f = open(outPath, 'w')
     f.write('\n' + path)
     for i in range(len(result_arr)):
         f.write(' 结果' + str(i) + '：' + str(result_arr[i]))
@@ -1128,25 +1134,25 @@ if __name__ == '__main__':
             print('图片路径：', args[0])
             img_path = args[0]
             # img_path = './img2/image20181212上午112250.jpg'
-            for ii in range(100,101):
-                img_path = './img2/img'+str(ii)+'.jpg'
-                # img_path = './img2/no/im'+str(ii)+'.jpg'
+            # for ii in range(209,210):
+            #     img_path = './img2/img'+str(ii)+'.jpg'
+                # img_path = './img2/no/img'+str(ii)+'.jpg'
                 # img_path = './img2/img0.jpg'
                 # img_path = './img2/no/image20181212上午101234.jpg'
                 # img_path = './img2/no/image20181212上午111909.jpg'
                 # img_path = './img2/no/image20181212上午112255.jpg'
                 # img_path = './img2/no/image20181212上午112756.jpg'
-                # img_path = './img2/no/im1.jpg' #0->9 小数点
+                # img_path = './img2/no/img179.jpg' #0->9 小数点
                 # img_path = './img2/no/im0.jpg' #小数点
-                dir_path_arr =img_path.split(os.path.sep)[:-1]
-                filename = img_path.split(os.path.sep)[-1].split('.')[0]
-                dir_path = os.path.sep.join(dir_path_arr) + os.path.sep + filename
-                isExists = os.path.exists(dir_path)
-                if not isExists:
-                    os.makedirs(dir_path)
-                    # os.makedirs(dir_path+'/num1')
-                    # os.makedirs(dir_path+'/num2')
-                process1(img_path)
+            dir_path_arr =img_path.split(os.path.sep)[:-1]
+            filename = img_path.split(os.path.sep)[-1].split('.')[0]
+            dir_path = os.path.sep.join(dir_path_arr) + os.path.sep + filename
+            isExists = os.path.exists(dir_path)
+            if not isExists:
+                os.makedirs(dir_path)
+                # os.makedirs(dir_path+'/num1')
+                # os.makedirs(dir_path+'/num2')
+            process1(img_path)
     else:
         out_path = args[args.index('out') + 1]
         print('图片路径：', args[0])

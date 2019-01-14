@@ -240,7 +240,7 @@ def getNumArea(pth):
 
 
 def load_cnn():
-    model_path = './myCNN_num2_old.h5'
+    model_path = './myCNN_num_2.h5'
     K.clear_session()  # Clear previous models from memory.
     # cnn_model = load_model(model_path)
     try:
@@ -309,35 +309,35 @@ def makedilateMask(src,l_d,index):
     kel = kernel30
     if p2==-1:
         if wid < 500 and wid > 200 and l_d>60:
-            kel=  cv2.getStructuringElement(cv2.MORPH_RECT, (8, 16))
+            kel=  cv2.getStructuringElement(cv2.MORPH_RECT, (4, 20))
             print('当前第二个参数数值为12')
         elif wid > 500 and wid < 1000 and l_d>60:
-            kel=  cv2.getStructuringElement(cv2.MORPH_RECT, (8, 20))
+            kel=  cv2.getStructuringElement(cv2.MORPH_RECT, (5, 24))
             print('当前第二个参数数值为16')
         elif wid > 1000 and wid<1400 and l_d>60:
-            kel=  cv2.getStructuringElement(cv2.MORPH_RECT, (8, 22))
+            kel=  cv2.getStructuringElement(cv2.MORPH_RECT, (7, 25))
             print('当前第二个参数数值为18')
         elif wid > 1400 and l_d>60:
-            kel=  cv2.getStructuringElement(cv2.MORPH_RECT, (10, 24))
+            kel=  cv2.getStructuringElement(cv2.MORPH_RECT, (8, 26))
             print('当前第二个参数数值为20')
         elif wid < 200:
-            kel=  cv2.getStructuringElement(cv2.MORPH_RECT, (8, 10))
+            kel=  cv2.getStructuringElement(cv2.MORPH_RECT, (4, 15))
             print('当前第二个参数数值为10')
         if l_d<60:
             if wid > 1400:
-                kel = cv2.getStructuringElement(cv2.MORPH_RECT, (10, 24))
+                kel = cv2.getStructuringElement(cv2.MORPH_RECT, (6, 24))
                 print('当前第二个参数值为20')
             elif wid > 1000 and wid<1400:
-                kel = cv2.getStructuringElement(cv2.MORPH_RECT, (8, 22))
+                kel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 22))
                 print('当前第二个参数值为14')
             elif  wid > 620 and wid < 1000:
-                kel = cv2.getStructuringElement(cv2.MORPH_RECT, (8, 18))
+                kel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 18))
                 print('当前第二个参数值为16')
             elif wid < 620 and wid > 200:
-                kel = cv2.getStructuringElement(cv2.MORPH_RECT, (8, 12))
+                kel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 12))
                 print('当前第二个参数值为12')
     elif p2!=-1:
-        kel = cv2.getStructuringElement(cv2.MORPH_RECT, (8, p2))
+        kel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, p2))
         print('当前第二个参数数值为'+str(p2))
 
     mask = cv2.dilate(src,kel)
@@ -358,18 +358,23 @@ def processMain(pth,outPath = './result.txt'):
     # num_blocks = []
     print('2.加载小数点模板')
     dot_img = cv2.imread('./dot1.jpg', 0)
+    dot_img2 = cv2.imread('./dot2.png', 0)
     # dot_img = cv2.GaussianBlur(cv2.resize(dot_img,(10,10)),(3,3),1)
     #
     # imwrite('./dot1.jpg',dot_img)
-    if dot_img is None:
-        print('err','缺失小数点模板')
+    if dot_img is None or dot_img2 is None:
+        print('err', '缺失小数点模板')
         sys.exit(0)
     d_w, d_h = dot_img.shape[::-1]
     dots = []
-    for i in range(3):
+    for i in range(7):
         dots.append(cv2.resize(dot_img, (int(10 / (1 + 0.1 * i)), int(10 / (1 + 0.1 * i)))))
-    for i in range(2):
+    for i in range(5):
         dots.append(cv2.resize(dot_img, (int(10 * (1 + 0.1 * i)), int(10 * (1 + 0.1 * i)))))
+    for i in range(7):
+        dots.append(cv2.resize(dot_img2, (int(10 / (1 + 0.1 * i)), int(10 / (1 + 0.1 * i)))))
+    for i in range(5):
+        dots.append(cv2.resize(dot_img2, (int(10 * (1 + 0.1 * i)), int(10 * (1 + 0.1 * i)))))
     rate = 0.6
     print('3.加载cnn模型')
     cnn = load_cnn()
@@ -413,7 +418,7 @@ def processMain(pth,outPath = './result.txt'):
                 result = cnn.predict(x)
                 print('数字：', convert2Num(result))
                 res_list.append(convert2Num(result))
-                for i in range(5):
+                for i in range(len(dots)):
                     res = cv2.matchTemplate(a_num, dots[i], cv2.TM_CCOEFF_NORMED)
                     loc = np.where(res >= rate)
                     # print(np.max(res))

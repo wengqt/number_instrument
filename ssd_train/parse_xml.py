@@ -103,7 +103,7 @@ for ii in range(1000,1217):
     tmp=[]
     for abox in rects:
         if scale_x>scale_y:
-            aa=[int((abox[0])/scale),int((abox[1])/scale+t_),int(abox[2]/scale),int((abox[3])/scale+t_)]
+            aa=[int((abox[0])/scale),int((abox[1])/scale+t_-1),int(abox[2]/scale+1),int((abox[3])/scale+t_+1)]
         else:
             aa=[int((abox[0])/scale+t_),int(abox[1]/scale),int((abox[2])/scale+t_),int(abox[3]/scale)]
         tmp.append(aa)
@@ -114,24 +114,31 @@ for ii in range(1000,1217):
     #     [x1, y1, x2, y2] = rect
     #     cv2.rectangle(black_img, (x1, y1), (x2, y2), 255, -1)
 
-    cv2.imwrite('./ssd_train/JPEGImages/image'+str(ii)+'.jpg',black_img)
+    # cv2.imwrite('./ssd_train/JPEGImages/image'+str(ii)+'.jpg',black_img)
     for ele in root.iter('path'):
         ele.text = '../JPEGImages/image'+str(ii)+'.jpg'
+    for ele in root.iter('folder'):
+        ele.text = '../JPEGImages/'
+
+    for ele in root.iter('width'):
+        ele.text = '456'
+    for ele in root.iter('height'):
+        ele.text = '256'
 
     for ele in root.iter('xmin'):
-        ele.text = str(int(int(ele.text)/scale+t_))
+        ele.text = str(int(int(ele.text)/scale+t_-1))
         # xmins.append(int(ele.text))
 
     for ele in root.iter('xmax'):
-        ele.text = str(int(int(ele.text)/scale+t_))
+        ele.text = str(int(int(ele.text)/scale+t_+1))
         # xmins.append(int(ele.text))
 
     for ele in root.iter('ymin'):
-        ele.text = str(int(int(ele.text)/scale))
+        ele.text = str(int(int(ele.text)/scale-1))
         # xmins.append(int(ele.text))
 
     for ele in root.iter('ymax'):
-        ele.text = str(int(int(ele.text)/scale))
+        ele.text = str(int(int(ele.text)/scale+1))
         # xmins.append(int(ele.text))
 
-    tree.write('./ssd_train/Annotations/image'+str(ii)+'.xml')
+    tree.write('./a/image'+str(ii)+'.xml')
