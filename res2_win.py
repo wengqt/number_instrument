@@ -637,7 +637,8 @@ def makedilateMask(src,l_d):
 
 
 def load_cnn():
-    model_path = './myCNN_num_2.h5'
+    # model_path = './myCNN_num_2.h5'
+    model_path = './myCNN_new_new.h5'
     K.clear_session()  # Clear previous models from memory.
     try:
         cnn_model = load_model(model_path)

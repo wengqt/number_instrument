@@ -11,13 +11,14 @@ import ssl
 from PIL import Image
 import numpy as np
 import cv2
+from keras.models import load_model
 
 ssl._create_default_https_context = ssl._create_unverified_context
 
 
 batch_size = 128
-num_classes = 10
-epochs = 12
+num_classes = 11
+epochs = 10
 
 # input image dimensions
 img_rows, img_cols = 64, 32
@@ -148,23 +149,26 @@ print(x_test.shape[0], 'test samples')
 y_train = keras.utils.to_categorical(y_train, num_classes)
 y_test = keras.utils.to_categorical(y_test, num_classes)
 
-model = Sequential()
-model.add(Conv2D(32, kernel_size=(3, 3),
-                 activation='relu',
-                 input_shape=input_shape))
-model.add(Conv2D(64, (3, 3), activation='relu'))
-model.add(MaxPooling2D(pool_size=(2, 2)))
-model.add(Dropout(0.25))
-model.add(Flatten())
-model.add(Dense(128, activation='relu'))
-model.add(Dropout(0.5))
-model.add(Dense(num_classes, activation='softmax'))
+# model = Sequential()
+# model.add(Conv2D(32, kernel_size=(3, 3),
+#                  activation='relu',
+#                  input_shape=input_shape))
+# model.add(Conv2D(64, (3, 3), activation='relu'))
+# model.add(MaxPooling2D(pool_size=(2, 2)))
+# model.add(Dropout(0.25))
+# model.add(Flatten())
+# model.add(Dense(128, activation='relu'))
+# model.add(Dropout(0.5))
+# model.add(Dense(num_classes, activation='softmax'))
+
+model = load_model('myCNN_new.h5')
+
 
 model.compile(loss=keras.losses.categorical_crossentropy,
               optimizer=keras.optimizers.Adadelta(),
               metrics=['accuracy'])
 
-model_checkpoint = ModelCheckpoint(filepath='aaa_epoch-{epoch:02d}_loss-{loss:.4f}_val_loss-{val_loss:.4f}.h5',
+model_checkpoint = ModelCheckpoint(filepath='num_cnn_epoch-{epoch:02d}_loss-{loss:.4f}_val_loss-{val_loss:.4f}.h5',
                                    monitor='val_loss',
                                    verbose=1,
                                    save_best_only=True,
@@ -197,4 +201,4 @@ print('Test loss:', score[0])
 print('Test accuracy:', score[1])
 
 # Save model
-model.save('myCNN.h5')
+model.save('myCNN_new_new.h5')

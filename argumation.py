@@ -1,7 +1,7 @@
 import cv2
 import random
 
-
+import os
 
 
 
@@ -78,42 +78,42 @@ def bright_avg(src):
 def generator_img(src):
     datagen = ImageDataGenerator(
                 rotation_range=5,
-                width_shift_range=0.2,
+                width_shift_range=0.1,
                 height_shift_range=0.1,
                 rescale=1./255,
                 # shear_range=0.05,
-                zoom_range=[1.0,1.5],
+                zoom_range=[0.8,1.2],
                 # horizontal_flip=True,
                 # fill_mode='constant'
                 fill_mode='nearest'
     )
-
+    img = load_img(src)
     # 打印转换前的图片
-    try:
-        img = load_img(src)
-
-        img = cv2.cvtColor(np.asarray(img), cv2.COLOR_RGB2BGR)
-        img = cv2.resize(img, (456, 256))
-        # all_light, stdd = bright_avg(img)
-        # print('gamma校正前的平均亮度', all_light)
-        # if all_light < 70:
-        #     rate = 0.8 - (60 - all_light) * 0.01
-        # elif all_light >= 90:
-        #     rate = 2.2 + (all_light - 90) * 0.01
-        # else:
-        #     rate = 1.5
-        # print('gamma数值', rate)
-        # img = calc_gamma(img, rate)
-        #
-        # all_light, stdd = bright_avg(img)
-        # print('gamma校正后的平均亮度', all_light)
-        img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-
-
-    # img = img.resize((256,144))
-    except:
-        print('no img '+str(src))
-        return 0
+    # try:
+    #     img = load_img(src)
+    #
+    #     img = cv2.cvtColor(np.asarray(img), cv2.COLOR_RGB2BGR)
+    #     img = cv2.resize(img, (32, 64))
+    #     # all_light, stdd = bright_avg(img)
+    #     # print('gamma校正前的平均亮度', all_light)
+    #     # if all_light < 70:
+    #     #     rate = 0.8 - (60 - all_light) * 0.01
+    #     # elif all_light >= 90:
+    #     #     rate = 2.2 + (all_light - 90) * 0.01
+    #     # else:
+    #     #     rate = 1.5
+    #     # print('gamma数值', rate)
+    #     # img = calc_gamma(img, rate)
+    #     #
+    #     # all_light, stdd = bright_avg(img)
+    #     # print('gamma校正后的平均亮度', all_light)
+    #     img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    #
+    #
+    # # img = img.resize((256,144))
+    # except:
+    #     print('no img '+str(src))
+    #     return 0
 
     # 将图片转换为数组，并重新设定形状
     x = img_to_array(img)
@@ -122,9 +122,9 @@ def generator_img(src):
 
     # 这里人工设置停止生成， 并保存图片用于可视化
     i = 0
-    for batch in datagen.flow(x,batch_size=1,save_to_dir='./ssd_train/group2',save_prefix='d',save_format='jpg'):
+    for batch in datagen.flow(x,batch_size=1,save_to_dir='./train32/new',save_prefix='d',save_format='jpg'):
         i +=1
-        if i > 2:
+        if i > 50:
             return
 
 
@@ -160,9 +160,10 @@ def resize_img(src,ind):
 
 
 
-for i in range(0,320):
+for i in range(0,1):
     # path='./ssd_train/pic_group1/img'+str(i)+'.jpg'
-    path='./img2/img'+str(i)+'.jpg'
+    # path='./train32/-1/pic'+str(i)+'.jpg'
+    path = './train32/8.jpg'
     generator_img(path)
 
 
