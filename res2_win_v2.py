@@ -460,6 +460,16 @@ def correctAngle(src,img2=None):
             theta = line[1]
             if abs(np.pi / 2 - theta) < np.pi / 6:
                 # print('this angle : ', theta * 180 / np.pi)
+                a = np.cos(theta)
+                b = np.sin(theta)
+                x0 = a * rho
+                y0 = b * rho
+                x11 = int(x0 + 1000 * (-b))
+                y11 = int(y0 + 1000 * (a))
+                x22 = int(x0 - 1000 * (-b))
+                y22 = int(y0 - 1000 * (a))
+                cv2.line(canny, (x11, y11), (x22, y22), 255, 1)
+
                 numLine = numLine + 1
                 angle = angle + theta
 
@@ -812,9 +822,9 @@ def ssd2_resize(img,img_height,img_width):
 
     bg[diff2 : diff2+ int(h/scale), diff1 : diff1 + int(w/scale)] = img
     # cv2.imwrite(dir_path+'/pic.jpg',bg)
-    bg = cv2.erode(bg,cv2.getStructuringElement(cv2.MORPH_CROSS, (2, 2)))
-    bg3c = cv2.cvtColor(bg, cv2.COLOR_GRAY2RGB)
 
+    bg3c = cv2.cvtColor(bg, cv2.COLOR_GRAY2RGB)
+    bg = cv2.erode(bg, cv2.getStructuringElement(cv2.MORPH_CROSS, (2, 2)))
     return bg3c,bg
 
 
@@ -1042,7 +1052,7 @@ def cut_line(num_arr,_img):
         imwrite(dir_path + '/line_image' + str(ind) + '.jpg', one_image)
 
         res_string = compare_loc(_line,might_loc)
-        print('结果',res_string)
+        print('res',res_string)
         res_arr.append(res_string)
 
     return res_arr
@@ -1386,8 +1396,8 @@ if __name__ == '__main__':
             print('图片路径：', args[0])
             img_path = args[0]
             # img_path = './img2/image20181212上午112250.jpg'
-            for ii in range(99,107):
-                img_path = './img2/img'+str(ii)+'.jpg'
+            # for ii in range(99,107):
+            #     img_path = './img2/img'+str(ii)+'.jpg'
                 # img_path = './img2/no/img'+str(ii)+'.jpg'
                 # img_path = './img2/img0.jpg'
                 # img_path = './img2/no/image20181212上午101234.jpg'
@@ -1396,15 +1406,15 @@ if __name__ == '__main__':
                 # img_path = './img2/no/image20181212上午112756.jpg'
                 # img_path = './img2/no/img179.jpg' #0->9 小数点
                 # img_path = './img2/no/im0.jpg' #小数点
-                dir_path_arr =img_path.split(os.path.sep)[:-1]
-                filename = img_path.split(os.path.sep)[-1].split('.')[0]
-                dir_path = os.path.sep.join(dir_path_arr) + os.path.sep + filename
-                isExists = os.path.exists(dir_path)
-                if not isExists:
-                    os.makedirs(dir_path)
-                    # os.makedirs(dir_path+'/num1')
-                    # os.makedirs(dir_path+'/num2')
-                process1(img_path)
+            dir_path_arr =img_path.split(os.path.sep)[:-1]
+            filename = img_path.split(os.path.sep)[-1].split('.')[0]
+            dir_path = os.path.sep.join(dir_path_arr) + os.path.sep + filename
+            isExists = os.path.exists(dir_path)
+            if not isExists:
+                os.makedirs(dir_path)
+                # os.makedirs(dir_path+'/num1')
+                # os.makedirs(dir_path+'/num2')
+            process1(img_path)
     else:
         out_path = args[args.index('out') + 1]
         print('图片路径：', args[0])
